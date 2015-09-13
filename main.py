@@ -5,32 +5,65 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from database_setup import Base, Vouchers
-from generate_voucher import get_vouchers
+from database_setup import Base, VoucherHead, VoucherBody, SubSys
+from voucher_value import voucher_info
 from tkinter import messagebox
 import _mssql
 import pymssql
 
 
-Engine = create_engine("mssql+pymssql://appadmin:N0v1terp@srvshasql01/DH_DI?charset=utf8")
+Engine = create_engine("mssql+pymssql://appadmin:N0v1terp@srvshasql01/R_DHDI_test_0907?charset=utf8")
 Base.metadata.Bind = Engine
 DBSession = sessionmaker(bind=Engine)
 session = DBSession()
 
-
-def insert_data(vouchers_data, jde_numbers):
-    num = 0
-    for vouchers in vouchers_data:
-        if vouchers[0] not in jde_numbers:
-            data = Vouchers(*vouchers)
-            session.add(data)
-            num += 1
-    session.commit()
-    session.close()
-    return num
+#
+# def insert_data(vouchers_data):
+#     num = 0
+#     for vouchers in vouchers_data:
+#         if vouchers[0] not in jde_numbers:
+#             data = Vouchers(*vouchers)
+#             session.add(data)
+#             num += 1
+#     session.commit()
+#     session.close()
+#     return num
 
 if __name__ == "__main__":
-    vouchers_data = get_vouchers()
-    jde_numbers = [voucher.jde_number for voucher in session.query(Vouchers).all()]
-    num = insert_data(vouchers_data, jde_numbers)
-    messagebox.showinfo("succeed", str(num) + ' rows were imported' )
+    voucher_head, voucher_body = voucher_info()
+    for each in voucher_head:
+        print(each)
+    for each in voucher_head:
+        print(each)
+        data = VoucherHead(*each)
+        session.add(data)
+        session.commit()
+
+    # voucher_body = voucher_info()[1]
+    # for each in voucher_head:
+    #     data = VoucherHead()
+
+
+    # print(SubSys.__table__.columns)
+    # open_period = session.query(SubSys.Fperiod).filter(SubSys.Fcheckout == 0)
+    #
+    # print(open_period.first()[0])
+    # values = session.query(SubSys)
+    # for each in values:
+    #     print(each.Fperiod, each.Fcheckout)
+    # vouchers = voucher_info()
+    # open_period = session.query(SubSys.FPeriod).filter_by()
+    # print(SubSys.__table__.columns)
+    # for each in open_period:
+    #     print(each.Fperiod)
+    # print(open_period)
+    # for each in open_period:
+    #     print(each.FPeriod)
+    # for each in open_period:
+    #     print(each)
+    # values = session.query(VoucherHeader).all()
+    # for each_value in values:
+
+    # jde_numbers = [voucher.jde_number for voucher in session.query(Vouchers).all()]
+    # num = insert_data(vouchers_data, jde_numbers)
+    # messagebox.showinfo("succeed", str(num) + ' rows were imported' )
