@@ -1,6 +1,9 @@
 from datetime import *
 import calendar
-print(datetime(2015, 5, calendar.monthrange(2015, 5)[1]))
+a = [1,2,3]
+b = [ 2,7, 9]
+for i , j  in zip(a, b):
+    print(i,j)
 
 # a = set([1,2, 2])
 # b = set([[1,2], [2,4] ])

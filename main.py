@@ -5,7 +5,7 @@
 from sqlalchemy import create_engine, Table, and_, func
 from sqlalchemy.orm import sessionmaker
 
-from database_setup import Base, VoucherHead, VoucherBody, SubSys, TVoucher
+from database_setup import Base, VoucherHead, VoucherBody, SubSys, TVoucher, TVoucherEntry
 from voucher_value import voucher_info
 from tkinter import messagebox
 import _mssql
@@ -18,52 +18,88 @@ DBSession = sessionmaker(bind=Engine)
 session = DBSession()
 
 
-def insert_date():
+def insert_interface():
     voucher_head, voucher_body = voucher_info()
     if not voucher_head:
         return 0
     # 查询系统中当前的会计期间，只处理当前会计期间的凭证，之前和之后期间的凭证不处理
-    accounting_period = session.query(SubSys.Fperiod).filter(SubSys.Fcheckout == 0).first()[0]
-    # 删除当前会计期间中，c_VoucherHead中的所有数据，然后导入新数据
-    session.query(VoucherBody).filter(VoucherBody.period == accounting_period).delete(synchronize_session=False)
-    session.query(VoucherHead).filter(VoucherHead.period == accounting_period).delete(synchronize_session=False)
-    session.query(TVoucher).filter(TVoucher.FPeriod == accounting_period).delete(synchronize_session=False)
+    open_year, open_period = session.query(SubSys.Fyear, SubSys.Fperiod).filter(SubSys.Fcheckout == 0).first()
+    # print(open_year, open_period)
+    # 删除当前会计期间中，c_VoucherHead和c_VoucherBody中的所有数据，然后导入新数据
+    session.query(VoucherBody).filter(and_(VoucherBody.year == open_year, VoucherBody.period == open_period)).delete(
+        synchronize_session=False)
+    session.query(VoucherHead).filter(and_(VoucherHead.year == open_year, VoucherHead.period == open_period)).delete(
+        synchronize_session=False)
+    # session.query(TVoucher).filter(and_(TVoucher.FYear == open_year, TVoucher.FPeriod == open_period)).delete(
+    # synchronize_session=False)
     session.commit()
+    print("Delete done")
     for each in voucher_head:
-        # interface_data = VoucherHead(jde_number=each['jde_number'], voucher_number=each['voucher_number'],
-        #                              line_count=each['line_count'], year=each['year'], period=each['period'],
-        #                              total_amount=each['total_amount'], voucher_date=each['voucher_date'])
-        serial_number = session.query(func.max(TVoucher.FSerialNum)).first()[0] + 1
-        kingdee_data = TVoucher(FVoucherID=-1, FDate=each['voucher_date'], FYear=each['year'], FPeriod=each['period'],
-                                FGroupID=1, FNumber=each['voucher_number'], FAttachments=1,
-                                FEntryCount=each['line_count'], FDebitTotal=each['total_amount'],
-                                FCreditTotal=each['total_amount'], FPreparerID=16393, FSerialNum=serial_number,
-                                FTransDate=each['voucher_date'])
-        # session.add(interface_data)
-        session.add(kingdee_data)
-        session.flush()
-        voucher_id = session.query(TVoucher.FVoucherID).filter(
-            and_(TVoucher.FYear == each['year'], TVoucher.FPeriod == each['period'],
-                 TVoucher.FNumber == each['voucher_number'])).first()[0]
-        print(voucher_id)
+        head_data = VoucherHead(*each)
+        # head_data = VoucherHead(jde_number=each['jde_number'], voucher_number=each['voucher_number'],
+        # line_count=each['line_count'], year=each['year'], period=each['period'],
+        # total_amount=each['total_amount'], voucher_date=each['voucher_date'])
+        # serial_number = session.query(func.max(TVoucher.FSerialNum)).first()[0] + 1
+        # kingdee_data = TVoucher(FVoucherID=-1, FDate=each['voucher_date'], FYear=each['year'], FPeriod=each['period'],
+        # FGroupID=1, FNumber=each['voucher_number'], FAttachments=1,
+        #                         FEntryCount=each['line_count'], FDebitTotal=each['total_amount'],
+        #                         FCreditTotal=each['total_amount'], FPreparerID=16393, FSerialNum=serial_number,
+        #                         FTransDate=each['voucher_date'])
+        session.add(head_data)
+        # session.flush()
+        # voucher_id = session.query(TVoucher.FVoucherID).filter(
+        #     and_(TVoucher.FYear == each['year'], TVoucher.FPeriod == each['period'],
+        #          TVoucher.FNumber == each['voucher_number'])).first()[0]
+        # print(voucher_id)
 
         session.commit()
 
     print("Heads import are done")
+    for each in voucher_body:
+        body_data = VoucherBody(*each)
+        session.add(body_data)
+        session.commit()
+    print("Bodies done")
 
-    # print(voucher_body[0])
-    # 删除当前会计期间中，c_VoucherBody中的所有数据，然后导入新数据
-    # session.query(VoucherBody).filter(VoucherBody.period == accounting_period).delete(synchronize_session=False)
-    # session.commit()
-    # for each in voucher_body:
-    # body_data = VoucherBody(*each)
-    # session.add(body_data)
-    # session.commit()
-    # print("Bodies import are done")
 
+def interface_to_kingdee():
+    """
+    取接口表VoucherHead的数据，插入金蝶的凭证表中
+    :return:
+    """
+    # 查询系统中当前的会计期间，只处理当前会计期间的凭证，之前和之后期间的凭证不处理
+    open_year, open_period = session.query(SubSys.Fyear, SubSys.Fperiod).filter(SubSys.Fcheckout == 0).first()
+    # 清除当前会计期间中凭证头和凭证行的数据
+    session.query(TVoucher).filter(TVoucher.FYear == open_year, TVoucher.FPeriod == open_period).delete(synchronize_session=False)
+    voucher_head = session.query(VoucherHead).filter(
+        and_(VoucherHead.year == open_year, VoucherHead.period == open_period, VoucherHead.line_count > 1))
+    voucher_number = 1
+
+    # print(voucher_head[0].year)
+    # print(TVoucher.__table__.columns)
+    print(TVoucherEntry.__table__.columns)
+    for each in voucher_head:
+        serial_number = session.query(func.max(TVoucher.FSerialNum)).first()[0]
+        head_data = TVoucher(FVoucherID=-1, FDate=each.voucher_date, FYear=each.year, FPeriod=each.period, FGroupID=1,
+                             FNumber=voucher_number, FEntryCount=each.line_count, FDebitTotal=each.total_amount,
+                             FCreditTotal=each.total_amount, FPreparerID=16393, FSerialNum=serial_number + 1, FTransDate=each.voucher_date)
+        voucher_number += 1
+        session.add(head_data)
+        session.flush()
+        voucher_id = session.query(TVoucher.FVoucherID).filter(TVoucher.FSerialNum == serial_number + 1).first()[0]
+
+        voucher_bodies = each.voucher_bodies
+        for each_line in voucher_bodies:
+            # body_data = TVoucherEntry(FVoucherID=voucher_id, FEntryID=each_line.line_number)
+            print(each_line.line_number, each_line.amount_cny)
+
+        session.commit()
+        print(voucher_id)
+        # voucher_id = serial_number.query(TVoucher.FVoucherID).filter(TVoucher.serial_number == serial_number + 1)
 
 if __name__ == "__main__":
-    insert_date()
+    # insert_interface()
+    interface_to_kingdee()
     # serial_number = session.query(func.max(TVoucher.FSerialNum))
     # print(serial_number.first()[0])
     # print(TVoucher.__table__.columns)
@@ -125,12 +161,12 @@ if __name__ == "__main__":
 # open_period = session.query(SubSys.FPeriod).filter_by()
 # print(SubSys.__table__.columns)
 # for each in open_period:
-#     print(each.Fperiod)
+# print(each.Fperiod)
 # print(open_period)
 # for each in open_period:
-#     print(each.FPeriod)
+# print(each.FPeriod)
 # for each in open_period:
-#     print(each)
+# print(each)
 # values = session.query(VoucherHeader).all()
 # for each_value in values:
 

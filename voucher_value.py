@@ -1,11 +1,10 @@
 # 这个脚本主要用于针对jde导出的Excel数据进行整理
 # 首先提取Excel的第5列数据，通过Document Number来判断哪些行属于同一张凭证；
-# 然后剔除只有一行的以及金额为0的数据
+# 然后剔除金额为0的数据，将剩下的数据分为头数据和行数据，头数据包含凭证头信息，行数据包含凭证行信息
 import tkinter
 from tkinter import filedialog
 import xlrd
 from datetime import *
-import calendar
 
 
 def choose_file():
@@ -21,17 +20,17 @@ def choose_file():
 
 def voucher_info():
     """
-    将jde中的数据进行转化，用dict的方式存储凭证信息
+    将jde中的数据进行转化，将Excel的内容以list的形式返回
     整个函数分为两部分，第一部分返回一个hash表，Key是凭证号，value是Excel的行号
-    第二部分利用第一部分的结果，将excel的内容存储下来
-    :return: 返回一个List,List中每个元素是dictionary,dictionary的key和value是凭证导入的关键字段
+    第二部分利用第一部分的结果，将excel的内容以两个list的形式进行存储
+    :return: 返回两个List,分别存储凭证头和凭证行的信息
     """
     file_name = choose_file()
     if not file_name:
         return 0
     workbook = xlrd.open_workbook(file_name)
     worksheet = workbook.sheet_by_index(0)
-    # 取出第5列的数据Document Number，判断哪些行属于同一张凭证
+    # 取出第6列的数据Document Number，判断哪些行属于同一张凭证
     cells = worksheet.col_slice(5, 1)
     hash_voucher = {}
     row_number = 1
@@ -44,9 +43,10 @@ def voucher_info():
             hash_voucher[cell.value] = [row_number]
         row_number += 1
 
-    # head = set([])
+    # 新增两个空List, head 和 body，然后将每一行的内容增加到两个list中
     head = []
     body = []
+    # 定义凭证号 voucher_number， 每个期间内凭证号是连续的，但是由于只有一行数据的存在，所以这个凭证号不能作为最终系统中的凭证号
     voucher_number = 0
     for value in hash_voucher.values():
         # 每个凭证下，每一行的序号，因为从0开始排序；所以最大值比上面的变量line_count小1
@@ -82,7 +82,7 @@ def voucher_info():
                 each_line = [jde_number, year, month, line_number, jde_account, currency, exchange_rate, amount_for,
                              amount_cny, voucher_description]
                 # each_line = {'jde_number': jde_number, 'period': month,
-                #              # 'voucher_date': voucher_date, 'year': year, 'month': month,
+                # # 'voucher_date': voucher_date, 'year': year, 'month': month,
                 #              'line_number': line_number,
                 #              'jde_account': jde_account, 'currency': currency,
                 #              'exchange_rate': exchange_rate, 'amount_for': amount_for,
@@ -91,14 +91,15 @@ def voucher_info():
             line_number += 1
             total_amount += abs(amount_cny)
         voucher_number += 1
-        # 去每个凭证的最后一行的部分字段作为头信息
-        # 注意最后的日期，部分当月冲回的凭证，jde_number会不变，这样会造成一个jde_number在一个期间内对应两个日期，
-        # 这里默认取最后一个日期
+        # 取每个凭证的最后一行的部分字段作为头信息
+        # 头信息中，最后一列是日期信息，部分当月冲回的凭证，jde_number会不变，这样会造成一个jde_number在一个期间内对应两个日期，
+        # 这里默认取最后一行的日期作为头信息
         # head.add((jde_number, voucher_number, line_number, year, month, total_amount/2, voucher_date))
         # dict的Key字段和数据库的字段名保持一致，便于后续代码的赋值
-        head.append(
-            {'jde_number': jde_number, 'voucher_number': voucher_number, 'line_count': line_number, 'year': year,
-             'period': month, 'total_amount': total_amount / 2, 'voucher_date': voucher_date})
+        head.append([jde_number, voucher_number, line_number, year, month, total_amount / 2, voucher_date])
+        # head.append(
+        # {'jde_number': jde_number, 'voucher_number': voucher_number, 'line_count': line_number, 'year': year,
+        #      'period': month, 'total_amount': total_amount / 2, 'voucher_date': voucher_date})
     return head, body
 
 
