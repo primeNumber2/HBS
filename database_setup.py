@@ -1,8 +1,9 @@
-from sqlalchemy import Column, Integer, String, DateTime, Numeric, NVARCHAR, Table, Index, ForeignKey, \
-    PrimaryKeyConstraint, ForeignKeyConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Numeric, NVARCHAR, Table, \
+    PrimaryKeyConstraint, ForeignKeyConstraint, FetchedValue, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import relationship, backref
+from datetime import datetime
 
 Base = declarative_base()
 Engine = create_engine('mssql+pymssql://appadmin:N0v1terp@srvshasql01/R_DHDI_test_0907')
@@ -18,36 +19,39 @@ class MapTable(Base):
 
 class VoucherHead(Base):
     __tablename__ = "c_VoucherHead"
-    __table_args__ = (PrimaryKeyConstraint('jde_number', 'period', name='c_VoucherHead_pk'),)
-    id = Column(Integer)
+    # 导入数据没有唯一的表示标识ID，唯一可以确定的是，在同一个期间内，jde_number不会重复出现
+    __table_args__ = (PrimaryKeyConstraint('jde_number', 'year', 'period', name='c_VoucherHead_pk'),)
     jde_number = Column(NVARCHAR(20), nullable=False)
+    voucher_number = Column(Integer, nullable=False)
     line_count = Column(Integer, nullable=False)
-    # voucher_number = Column(Integer, nullable=False)
-    # voucher_line_number = Column(Integer, nullable=False)
     year = Column(Integer, nullable=False)
     period = Column(Integer, nullable=False)
+    total_amount = Column(Numeric(20, 2), nullable=False)
     voucher_date = Column(DateTime, nullable=False)
     voucher_category = Column(NVARCHAR(20), nullable=False, default='transfer')
     preparer = Column(NVARCHAR(20), nullable=False, default='morningstar')
+    create_date = Column(DateTime, default=datetime.now())
 
-    def __init__(self, jde_number, line_count, year, period, voucher_date):
-        # self.unique_id = unique_id
+    def __init__(self, jde_number, voucher_number, line_count, year, period, total_amount, voucher_date):
         self.jde_number = jde_number
+        self.voucher_number = voucher_number
         self.line_count = line_count
         self.year = year
         self.period = period
+        self.total_amount = total_amount
         self.voucher_date = voucher_date
-        # self.voucher_category = voucher_category
-        # self.preparer = preparer
 
 
 class VoucherBody(Base):
     __tablename__ = "c_VoucherBody"
-    __table_args__ = (ForeignKeyConstraint(['jde_number', 'period'],
-                                           ['c_VoucherHead.jde_number', 'c_VoucherHead.period']),)
-    id = Column(Integer, primary_key=True)
+    __table_args__ = (ForeignKeyConstraint(['jde_number', 'year', 'period'],
+                                           ['c_VoucherHead.jde_number', 'c_VoucherHead.year', 'c_VoucherHead.period']),
+                      PrimaryKeyConstraint('jde_number', 'year', 'period', 'line_number', name='c_VoucherBody_pk'))
+    # id = Column(Integer, primary_key=True)
     jde_number = Column(NVARCHAR(20), nullable=False)
+    year = Column(Integer, nullable=False)
     period = Column(Integer, nullable=False)
+    line_number = Column(Integer, nullable=False)
     # header_id = Column(Integer, ForeignKey("c_VoucherHead.id"))
     jde_account = Column(NVARCHAR(20), nullable=False)
     currency = Column(NVARCHAR(20), nullable=False)
@@ -56,31 +60,40 @@ class VoucherBody(Base):
     amount_for = Column(Numeric(20, 2), nullable=False)
     amount_cny = Column(Numeric(20, 2), nullable=False)
     voucher_description = Column(NVARCHAR(200), nullable=False)
-    voucher_heads = relationship("VoucherHead", backref=backref('voucher_bodies', order_by=id))
+    voucher_heads = relationship("VoucherHead", backref=backref('voucher_bodies'))
+    create_date = Column(DateTime, default=datetime.now())
 
-    def __init__(self, id, jde_number, period, jde_account, currency, exchange_type, exchange_rate, amount_for, amount_cny,
-                 voucher_description):
-        self.id = id
+    def __init__(self, jde_number, year, period, line_number, jde_account, currency,
+                 exchange_rate, amount_for, amount_cny, voucher_description):
         self.jde_number = jde_number
+        self.year = year
         self.period = period
+        self.line_number = line_number
         self.jde_account = jde_account
         self.currency = currency
-        self.exchange_type = exchange_type
         self.exchange_rate = exchange_rate
         self.amount_for = amount_for
         self.amount_cny = amount_cny
         self.voucher_description = voucher_description
-# c_VoucherHead = Base.metadata.tables['c_VoucherHead']
-# Index('ix_JDENumber_Period', Base.metadata.tables['c_VoucherHead'].c.jde_number,
-#       Base.metadata.tables['c_VoucherHead'].c.period, unique=True)
-# class Voucher(Base):
-#     __table__ = Table('t_Voucher', Base.metadata, autoload=True, autoload_with=Engine)
-#
-#
-# class VoucherEntry(Base):
-#     __table__ = Table('t_VoucherEntry', Base.metadata, autoload=True, autoload_with=Engine)
+
+
 class SubSys(Base):
     __table__ = Table('t_SubSys', Base.metadata, autoload=True, autoload_with=Engine)
+
+
+class TVoucher(Base):
+    # 对应金蝶系统的凭证头表
+    __table__ = Table('t_Voucher', Base.metadata,
+                      # Column('FVoucherID', Integer, primary_key=True, autoincrement=False, server_default=FetchedValue()),
+                      autoload=True, autoload_with=Engine, implicit_returning=False)
+
+
+class TVoucherEntry(Base):
+    # 对应金蝶系统的凭证行表
+    __table__ = Table('t_VoucherEntry', Base.metadata,
+                      autoload=True,
+                      autoload_with=Engine)
+
 
 
 def if_table_exists(engine, tablename):
@@ -103,18 +116,10 @@ def create_table(engine, tablename):
         print("Already exists")
 
 
-# from sqlalchemy.orm import sessionmaker
-# Session=sessionmaker(Engine)
-# session=Session()
-# a = session.query(VoucherHead)
-# print(a[0].voucher_bodies[0].amount_cny)
-# for each in a:
-#     print(each.voucher_bodies[0].amount_cny)
 # drop_table(Engine, 'c_VoucherBody')
 # drop_table(Engine, 'c_VoucherHead')
-#
 # create_table(Engine, 'c_VoucherHead')
 # create_table(Engine, 'c_VoucherBody')
-# def delete_item(engine, tablename):
+# # def delete_item(engine, tablename):
 #     if if_table_exists(engine, tablename):
 #         Base.metadata.tables[tablename].delete()
