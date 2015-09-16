@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship, backref
 from datetime import datetime
 
 Base = declarative_base()
-Engine = create_engine('mssql+pymssql://appadmin:N0v1terp@srvshasql01/R_DHDI_test_0907')
+Engine = create_engine('mssql+pymssql://appadmin:N0v1terp@srvshasql01/R_DH_DI_0915')
 
 
 class MapTable(Base):
@@ -95,9 +95,21 @@ class TVoucherEntry(Base):
                       autoload_with=Engine)
 
 
+class Account(Base):
+    __table__ = Table('t_Account', Base.metadata, autoload=True, autoload_with=Engine)
+
+
+class Currency(Base):
+    __table__ = Table('t_Currency', Base.metadata, autoload=True, autoload_with=Engine)
+
+# class MapTable(Base):
+#     __table__ = Table('map_source', Base.metadata, autoload=True, autoload_with=Engine)
+
 
 def if_table_exists(engine, tablename):
     return engine.dialect.has_table(engine.connect(), tablename)
+
+
 
 
 def drop_table(engine, tablename):
