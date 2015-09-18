@@ -5,7 +5,7 @@
 from sqlalchemy import create_engine, Table, and_, func
 from sqlalchemy.orm import sessionmaker
 
-from database_setup import Base, VoucherHead, VoucherBody, SubSys, TVoucher, TVoucherEntry, MapTable, Account, Currency
+from database_setup import Base, VoucherHead, VoucherBody, SubSys, TVoucher, TVoucherEntry, MatchTable, Account, Currency
 from voucher_value import voucher_info
 from tkinter import messagebox
 import _mssql
@@ -83,9 +83,10 @@ def interface_to_kingdee():
         voucher_bodies = each.voucher_bodies
 
         for each_line in voucher_bodies:
-            account_code = \
-                session.query(MapTable.kingdee_code).filter(MapTable.jde_code == each_line.jde_account).first()[0]
-            account_id = session.query(Account.FAccountID).filter(Account.FNumber == account_code).first()[0]
+            account_id = session.query(MatchTable.F_101).filter(MatchTable.FNumber == each_line.jde_account).first()[0]
+            # account_code = \
+            #     session.query(MatchTable.kingdee_code).filter(MatchTable.jde_code == each_line.jde_account).first()[0]
+            # account_id = session.query(Account.FAccountID).filter(Account.FNumber == account_code).first()[0]
             currency_id = session.query(Currency.FCurrencyID).filter(Currency.FNumber == each_line.currency).first()[0]
             fdc = 1 if each_line.amount_cny > 0 else 0
             body_data = TVoucherEntry(FVoucherID=voucher_id, FEntryID=each_line.line_number,
@@ -99,6 +100,6 @@ def interface_to_kingdee():
 
 
 if __name__ == "__main__":
-    insert_interface()
+    # insert_interface()
     interface_to_kingdee()
     messagebox.showinfo("Import", "Done")

@@ -1,103 +1,31 @@
-import os
+# 将generate_voucher中返回的list数据插入数据库
+# 尽管数据库中的jde_number字段是unique属性，但是为了避免无意义的报错，
+# 在导入前会判断要导入的jde_number是否在数据库中已经存在
+# 因为使用py2exe来生成exe可执行文件，所以要import _mssql和pymssql，这是py2exe的一个bug
+from sqlalchemy import create_engine, MetaData, Table, and_
+from sqlalchemy.orm import sessionmaker
 
-# dir_path = os.join(dir(__file__), "log.txt")
-print(os.getcwd())
-# from datetime import *
-# import calendar
-# a = [1,2,3]
-# b = [ 2,7, 9]
-# for i , j  in zip(a, b):
-#     print(i,j)
-
-# a = set([1,2, 2])
-# b = set([[1,2], [2,4] ])
-# a.add(3)
-# print(a)
-# b.add((2,4))
-# print(b)
-# for i in b:
-#     print(i)
-# print('.'.join(['a', 'b', 'c']))
-
-# from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
-# from sqlalchemy.ext.declarative import declarative_base
-# from sqlalchemy.orm import sessionmaker, relationship, backref
-# from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
-# import database_setup as ds
-#
-# Engine = create_engine('mssql+pymssql://appadmin:N0v1terp@srvshasql02/Test')
-# Base = declarative_base(Engine)
-# Session = sessionmaker(Engine)
-# session = Session()
-#
-#
-# class Person(Base):
-#     __tablename__ = "persons"
-#     id = Column(Integer, primary_key=True)
-#     name = Column(String(100))
-#     age = Column(Integer)
-#
-#     def __repr__(self):
-#         return "id = %s, name = %s, age = %s" % (self.id, self.name, self.age)
-#
-#
-# class Department(Base):
-#     __tablename__ = "departments"
-#     id = Column(Integer, primary_key=True)
-#     name = Column(String(20), nullable=False)
-#     manager_id = Column(Integer, ForeignKey("persons.id"))
-#     # person = relationship('Person', backref("departments", order_by=id))
-#     persons = relationship("Person", backref=backref('departments', order_by=id))
-#
-#     def __repr__(self):
-#         return "id is %s, name is %s, manager_id is %s" % (self.id, self.name, self.manager_id)
-#
-# p1 = session.query(Person)
-# print(p1.all())
-#
-# d1 = session.query(Department)
-# print(d1.all())
-#
-# r1 = session.query(Person.name, Person.age, Department.name).join(Department, Person.id==Department.manager_id).\
-#     filter(Department.name=="Finance")
-# print(r1.all())
-# # for p, d in session.query(Person, Department).filter(Person.id == Department.manager_id).filter(Department.name=="Finance"):
-# #     print(p)
-# #     print(d)
-# # lucy = Person(name="Lucy", age=20)
-# # print(lucy.departments)
-# # lucy.departments = [Department(name="logistic"), Department(name="commercial")]
-# # print(lucy.departments)
-# # print(lucy.departments[1])
-# # print(lucy.departments[1].name)
-# # session.add(lucy)
-# # session.commit()
-# # session.commit()
-# # p1 = Person()
-# # d1 = Department()
-# #
-# # print(p1.departments)
-# # print(d1.persons)
-# # p1.departments.append(d1)
-# # print(p1.departments)
-# # print(d1.persons)
-# #
-# # r1 = session.query(Person).all()
-# # print(r1)
-# #
-# # r2 = session.query(Department).all()
-# # print(r2)
-# #
-# # r3 = session.query(Department).first()
-# # print(r3)
-# # print(r3.persons.name)
-# #
-# # r4 = session.query(Person).first()
-# # print(r4)
-# # print(r4.departments)
-# #
-# # # data = Department(name="purchase", manager_id=16)
-# # # session.add(data)
-# # # session.commit()
-# # r5 = session.query(Department)
-# # print(r5.all())
+Engine = create_engine("mssql+pymssql://appadmin:N0v1terp@srvshasql01/R_DH_DI_0915?charset=utf8")
+metadata = MetaData(bind=Engine)
+DBSession = sessionmaker(bind=Engine)
+session = DBSession()
+conn = Engine.connect()
+map_table = Table('map_source', metadata, autoload=True, autoload_with=Engine)
+t_item_3001 = Table('t_Item_3001', metadata, autoload=True, autoload_with=Engine)
+t_item = Table('t_Item', metadata, autoload=True, autoload_with=Engine)
+t_account = Table('t_Account', metadata, autoload=True, autoload_with=Engine)
+print(map_table.columns)
+print(t_item_3001.columns)
+# values = session.query(map_table.c.jde_code, map_table.c.jde_name)
+# for each in values:
+# print(each)
+values = session.query(t_item.c.FItemID, t_item.c.FNumber).filter(t_item.c.FItemClassID == 3001)
+# for each in values:
+# print(each)
+print(values[0])
+result = session.query(map_table.c.jde_code, map_table.c.AccountID, t_item.c.FItemID, map_table.c.jde_name, t_account.c.FName).join(
+    t_item, t_account, and_(map_table.c.jde_code == t_item.c.FNumber, map_table.c.AccountID == t_account.c.FAccountID, t_item.c.FItemClassID == 3001,  ))
+print(result[0])
+# for each in result:
+# ins = t_item_3001.insert().values(FItemID=each[2], F_101=each[1], FNumber=each[0], FName=each[3])
+#     conn.execute(ins)

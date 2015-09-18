@@ -9,12 +9,12 @@ Base = declarative_base()
 Engine = create_engine('mssql+pymssql://appadmin:N0v1terp@srvshasql01/R_DH_DI_0915')
 
 
-class MapTable(Base):
-    __tablename__ = "map_source"
-    id = Column(Integer, primary_key=True)
-    jde_code = Column(String(100), nullable=False)
-    jde_name = Column(String(250), nullable=False)
-    kingdee_code = Column(String(100), nullable=False)
+# class MapTable(Base):
+#     __tablename__ = "map_source"
+#     id = Column(Integer, primary_key=True)
+#     jde_code = Column(String(100), nullable=False)
+#     jde_name = Column(String(250), nullable=False)
+#     kingdee_code = Column(String(100), nullable=False)
 
 
 class VoucherHead(Base):
@@ -93,6 +93,12 @@ class TVoucherEntry(Base):
     __table__ = Table('t_VoucherEntry', Base.metadata,
                       autoload=True,
                       autoload_with=Engine)
+
+
+class MatchTable(Base):
+    # 金蝶系统内的科目映射表
+    __table__ = Table('t_Item_3001', Base.metadata, autoload=True, autoload_with=Engine)
+
 
 
 class Account(Base):
