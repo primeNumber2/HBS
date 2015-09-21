@@ -30,23 +30,26 @@ def voucher_info():
         return 0
     workbook = xlrd.open_workbook(file_name)
     worksheet = workbook.sheet_by_index(0)
-    # 取出第6列的数据Document Number，判断哪些行属于同一张凭证
-    cells = worksheet.col_slice(5, 1)
+     # 取出第5列的Doc Company和第6列的数据Document Number，这两个的组合在同一个期间内是唯一的，所以由此判断哪些行属于同一张凭证
+    cells = []
+    for account_book, jde_number in zip(worksheet.col_values(4, 1), worksheet.col_values(5, 1)):
+        cells.append((account_book, jde_number))
     hash_voucher = {}
+    # 初始化row number，从第2行开始往下遍历
     row_number = 1
     for cell in cells:
         # 如果hash的Key表中已经存在该Document Number，将行号row number加入hash表的value中，
         # 如果没有存在该Document Number，将这个Document Number新增为Key
-        if cell.value in hash_voucher:
-            hash_voucher[cell.value].append(row_number)
+        if cell in hash_voucher:
+            hash_voucher[cell].append(row_number)
         else:
-            hash_voucher[cell.value] = [row_number]
+            hash_voucher[cell] = [row_number]
         row_number += 1
     # 新增两个空List, head 和 body，然后将每一行的内容增加到两个list中
     head = []
     body = []
-    # 定义凭证号 voucher_number， 每个期间内凭证号是连续的，但是由于只有一行数据的存在，所以这个凭证号不能作为最终系统中的凭证号
-    voucher_number = 0
+    # # 定义凭证号 voucher_number， 每个期间内凭证号是连续的，但是由于只有一行数据的存在，所以这个凭证号不能作为最终系统中的凭证号
+    # voucher_number = 0
     for value in hash_voucher.values():
         # 每个凭证下，每一行的序号，因为从0开始排序；所以最大值比上面的变量line_count小1
         line_number = 0
@@ -54,6 +57,8 @@ def voucher_info():
         for row_number in value:
             # JDE导出的数据中，有的数据行金额为0，或者为空,这部分数据需要剔除
             if worksheet.cell_value(row_number, 14) != 0 and worksheet.cell_value(row_number, 14) != '':
+                # 账簿识别码
+                account_book = worksheet.cell_value(row_number, 4)
                 # 取JDE的Excel中的Posting Date，转化为年月日时分秒
                 year, month, day, hour, minute, second = xlrd.xldate_as_tuple(worksheet.cell(row_number, 3).value, 0)
                 # excel中的batch_number，加上行号是每个月的唯一值，但是跨月时，当存在红冲的业务时，batch_number会重复；
@@ -76,20 +81,20 @@ def voucher_info():
                 exchange_rate = 1 if currency == "CNY" else round(amount_cny * 1.0 / amount_for, 8)
                 voucher_description = "-".join(worksheet.row_values(row_number, 5, 9))
                 # 此处变量的顺序一定要和database_setup中VoucherBody的类顺序相同，便于后续代码传参；
-                each_line = [jde_number, year, month, line_number, jde_account, currency, exchange_rate, amount_for,
+                each_line = [account_book, jde_number, year, month, line_number, jde_account, currency, exchange_rate, amount_for,
                              amount_cny, voucher_description]
                 body.append(each_line)
                 line_number += 1
                 total_amount += abs(amount_cny)
         # 由于源数据中有一些凭证所有的行金额都为0，所以要剔除；
         if line_number > 0:
-            voucher_number += 1
+            # voucher_number += 1
             # 取每个凭证的最后一行的部分字段作为头信息
             # 头信息中，最后一列是日期信息，部分当月冲回的凭证，jde_number一样，但是日期不一致
             # 这里默认取最后一行的日期作为头信息
             # head.add((jde_number, voucher_number, line_number, year, month, total_amount/2, voucher_date))
             # dict的Key字段和数据库的字段名保持一致，便于后续代码的赋值
-            head.append([jde_number, voucher_number, line_number, year, month, total_amount / 2, voucher_date])
+            head.append([account_book, jde_number, line_number, year, month, total_amount / 2, voucher_date])
         # head.append(
         # {'jde_number': jde_number, 'voucher_number': voucher_number, 'line_count': line_number, 'year': year,
         #      'period': month, 'total_amount': total_amount / 2, 'voucher_date': voucher_date})
@@ -101,6 +106,6 @@ if __name__ == "__main__":
     print("总共有凭证头", len(voucher_head), "行")
     heads = []
     for value in voucher_head:
-        heads.append(value[0])
+        heads.append((value[0],value[1]))
     heads.sort()
     print(heads)

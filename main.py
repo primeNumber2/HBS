@@ -13,7 +13,7 @@ import pymssql
 
 
 Engine = create_engine("mssql+pymssql://appadmin:N0v1terp@srvshasql01/R_DH_DI_0915?charset=utf8")
-Base.metadata.Bind = Engine
+# Base.metadata.Bind = Engine
 DBSession = sessionmaker(bind=Engine)
 session = DBSession()
 
@@ -24,6 +24,7 @@ def insert_interface():
         return 0
     # 查询系统中当前的会计期间，只处理当前会计期间的凭证，之前和之后期间的凭证不处理
     open_year, open_period = session.query(SubSys.Fyear, SubSys.Fperiod).filter(SubSys.Fcheckout == 0).first()
+    print("当前会计期间为", open_year, "年", open_period, '月')
     # 删除当前会计期间中，c_VoucherHead和c_VoucherBody中的所有数据，然后导入新数据
     session.query(VoucherBody).filter(and_(VoucherBody.year == open_year, VoucherBody.period == open_period)).delete(
         synchronize_session=False)
@@ -56,13 +57,14 @@ def interface_to_kingdee():
                                                           TVoucher.FPosted == 0)
     de = delete_id.subquery()
     session.query(TVoucherEntry).filter(TVoucherEntry.FVoucherID.in_(de)).delete(synchronize_session=False)
-    session.query(TVoucher).filter(TVoucher.FVoucherID.in_(de)).delete(
-        synchronize_session=False)
+    session.query(TVoucher).filter(TVoucher.FVoucherID.in_(de)).delete(synchronize_session=False)
     print("Voucher delete done")
     # 从接口表VouchHead中取出头信息，注意：因为针对VoucherHead和VoucherBody建立了Relation关系，
     # 所以可以通过VoucherHead的voucher_bodies属性返回Voucher的Body信息
+    # 取出接口表中行合计大于1的凭证
     voucher_head = session.query(VoucherHead).filter(
         and_(VoucherHead.year == open_year, VoucherHead.period == open_period, VoucherHead.line_count > 1))
+    # voucher_number指凭证号，每插入一张凭证，凭证号加1
     voucher_number = 1
     # 遍历VoucherHead复合条件的数据，逐行插入金蝶的凭证头和凭证行
     for each in voucher_head:
@@ -100,6 +102,6 @@ def interface_to_kingdee():
 
 
 if __name__ == "__main__":
-    # insert_interface()
-    interface_to_kingdee()
+    insert_interface()
+    # interface_to_kingdee()
     messagebox.showinfo("Import", "Done")
