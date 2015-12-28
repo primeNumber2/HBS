@@ -1,4 +1,4 @@
-# 这个脚本主要用于针对jde导出的Excel数据进行整理
+# 这个脚本主要用于针对jde导出的Excel数据进行整理，并以list的方式存储，整个脚本仅涉及和Excel的交互，不涉及任何和数据库的交互
 # 首先提取Excel的第5列数据，通过Document Number来判断哪些行属于同一张凭证；
 # 然后剔除金额为0的数据，将剩下的数据分为头数据和行数据，头数据包含凭证头信息，行数据包含凭证行信息
 import tkinter
@@ -27,7 +27,7 @@ def voucher_info():
     """
     file_name = choose_file()
     if not file_name:
-        return 0
+        return 0, 0
     workbook = xlrd.open_workbook(file_name)
     worksheet = workbook.sheet_by_index(0)
      # 取出第5列的Doc Company和第6列的数据Document Number，这两个的组合在同一个期间内是唯一的，所以由此判断哪些行属于同一张凭证
@@ -103,9 +103,11 @@ def voucher_info():
 
 if __name__ == "__main__":
     voucher_head, voucher_body = voucher_info()
-    print("总共有凭证头", len(voucher_head), "行")
-    heads = []
-    for value in voucher_head:
-        heads.append((value[0],value[1]))
-    heads.sort()
-    print(heads)
+    print(voucher_head)
+    if voucher_head:
+        print("总共有凭证头", len(voucher_head), "行")
+        heads = []
+        for value in voucher_head:
+            heads.append((value[0],value[1]))
+        heads.sort()
+        print(heads)

@@ -1,112 +1,155 @@
-# 这个脚本主要用于针对jde导出的Excel数据进行整理
-# 首先提取Excel的第5列数据，通过Document Number来判断哪些行属于同一张凭证；
-# 然后剔除金额为0的数据，将剩下的数据分为头数据和行数据，头数据包含凭证头信息，行数据包含凭证行信息
-import tkinter
-from tkinter import filedialog
-import xlrd
-from datetime import *
+from sqlalchemy import create_engine, MetaData, and_, func, Table
+from sqlalchemy.orm import sessionmaker
+from voucher_value import voucher_info
+from database_setup import Engine, VoucherHead, VoucherBody, SubSys, MatchTable, Currency
+from configuation import DB_DI, DB_TJ, DI_CODE, TJ_CODE
+from datetime import datetime
+from tkinter import messagebox
+import pymssql
+import _mssql
+from gui import ShowMessage
+import logging
+logging.basicConfig(level=logging.DEBUG, filename="log.txt")
+# 数据导入时，会先将所有的数据导入中间表，然后从中间表中将数据分别导入不同的账套，所以中间表作为数据源是固定的，这里将连接字符串固定下来
+DB_Session = sessionmaker(bind=Engine)
+Inter_Session = DB_Session()
 
 
-def choose_file():
+def insert_interface():
     """
-    让用户选择要导入的文件，并返回文件的绝对路径
-    :return: 导入的Excel文件绝对地址 filename
+    将Excel的源数据插入中间表，源数据来自于另一个Python脚本voucher_value
+    :return:
     """
-    root = tkinter.Tk()
-    root.withdraw()
-    file_name = filedialog.askopenfilename()
-    return file_name
-
-
-def voucher_info():
-    """
-    将jde中的数据进行转化，将Excel的内容以list的形式返回
-    整个函数分为两部分，第一部分返回一个hash表，Key是凭证号，value是Excel的行号
-    第二部分利用第一部分的结果，将excel的内容以两个list的形式进行存储
-    :return: 返回两个List,分别存储凭证头和凭证行的信息
-    """
-    file_name = choose_file()
-    if not file_name:
+    voucher_head, voucher_body = voucher_info()
+    if not voucher_head:
         return 0
-    workbook = xlrd.open_workbook(file_name)
-    worksheet = workbook.sheet_by_index(0)
-    # 取出第5列的Doc Company和第6列的数据Document Number，这两个的组合在同一个期间内是唯一的，所以由此判断哪些行属于同一张凭证
-    cells = []
-    for account_book, jde_number in zip(worksheet.col_values(4, 1), worksheet.col_values(5, 1)):
-        cells.append((account_book, jde_number))
-    # cells = (worksheet.col_slice(4, 1), worksheet.col_slice(5, 1))
-    hash_voucher = {}
-    row_number = 1
-    for cell in cells:
-        # 如果hash的Key表中已经存在该Document Number，将行号row number加入hash表的value中，
-        # 如果没有存在该Document Number，将这个Document Number新增为Key
-        if cell in hash_voucher:
-            hash_voucher[cell].append(row_number)
-        else:
-            hash_voucher[cell] = [row_number]
-        row_number += 1
-    print(hash_voucher)
-    # 新增两个空List, head 和 body，然后将每一行的内容增加到两个list中
-    head = []
-    body = []
-    # # 定义凭证号 voucher_number， 每个期间内凭证号是连续的，但是由于只有一行数据的存在，所以这个凭证号不能作为最终系统中的凭证号
-    # voucher_number = 0
-    for value in hash_voucher.values():
-        # 每个凭证下，每一行的序号，因为从0开始排序；所以最大值比上面的变量line_count小1
-        line_number = 0
-        total_amount = 0
-        for row_number in value:
-            # JDE导出的数据中，有的数据行金额为0，或者为空,这部分数据需要剔除
-            if worksheet.cell_value(row_number, 14) != 0 and worksheet.cell_value(row_number, 14) != '':
-                # 账簿识别码
-                account_book = worksheet.cell_value(row_number, 4)
-                # 取JDE的Excel中的Posting Date，转化为年月日时分秒
-                year, month, day, hour, minute, second = xlrd.xldate_as_tuple(worksheet.cell(row_number, 3).value, 0)
-                # excel中的batch_number，加上行号是每个月的唯一值，但是跨月时，当存在红冲的业务时，batch_number会重复；
-                jde_number = str(worksheet.cell_value(row_number, 5))
-                # excel中的batch_number加上行号，加上月份，构成唯一值
-                # unique_id = '-'.join([str(jde_number), str(month)])
-                voucher_date = datetime(year, month, day)
-                # 合并两列形成jde_account
-                jde_account = worksheet.cell_value(row_number, 9) + worksheet.cell_value(row_number, 10)
-                # 有些分录虽然是外币，但是金额过小，美元栏显示为0；此部分凭证行统一确定为人民币；
-                currency = "CNY" if worksheet.cell_value(row_number, 13) == "" \
-                                    or worksheet.cell_value(row_number, 13) == 0 \
-                    else worksheet.cell_value(row_number, 11)
-                # 如果是数值为空，默认返回时string类型的空"",但是需要返回0
-                # amount_for指原币金额，amount_cny是人民币金额
-                amount_cny = worksheet.cell_value(row_number, 14) if worksheet.cell_value(row_number, 14) != "" else 0
-                amount_for = amount_cny if currency == "CNY" else worksheet.cell_value(row_number, 13)
-                # amount_for = worksheet.cell_value(row_number, 13) if worksheet.cell_value(row_number, 13) != "" else 0
-                # 汇率是人民币金额除以原币金额反算出来的，所以和Excel中可能会有尾差
-                exchange_rate = 1 if currency == "CNY" else round(amount_cny * 1.0 / amount_for, 8)
-                voucher_description = "-".join(worksheet.row_values(row_number, 5, 9))
-                # 此处变量的顺序一定要和database_setup中VoucherBody的类顺序相同，便于后续代码传参；
-                each_line = [jde_number, year, month, line_number, jde_account, currency, exchange_rate, amount_for,
-                             amount_cny, voucher_description]
-                body.append(each_line)
-                line_number += 1
-                total_amount += abs(amount_cny)
-        # 由于源数据中有一些凭证所有的行金额都为0，所以要剔除；
-        if line_number > 0:
-            # voucher_number += 1
-            # 取每个凭证的最后一行的部分字段作为头信息
-            # 头信息中，最后一列是日期信息，部分当月冲回的凭证，jde_number一样，但是日期不一致
-            # 这里默认取最后一行的日期作为头信息
-            # head.add((jde_number, voucher_number, line_number, year, month, total_amount/2, voucher_date))
-            # dict的Key字段和数据库的字段名保持一致，便于后续代码的赋值
-            head.append([account_book, jde_number, line_number, year, month, total_amount / 2, voucher_date])
-        # head.append(
-        # {'jde_number': jde_number, 'voucher_number': voucher_number, 'line_count': line_number, 'year': year,
-        #      'period': month, 'total_amount': total_amount / 2, 'voucher_date': voucher_date})
-    return head, body
+    # 查询系统中当前的会计期间，只处理当前会计期间的凭证，之前和之后期间的凭证不处理
+    open_year, open_period = Inter_Session.query(SubSys.Fyear, SubSys.Fperiod).filter(SubSys.Fcheckout == 0).first()
+    fp = open("log.txt", "a")
+    fp.write("\n" + "*"*40 + "\n")
+    fp.write("\n" + str(datetime.now()) + "\n")
+    message = "开始向接口表插入数据\n"
+    message += "接口会计期间为" + str(open_year) + "年" + str(open_period) + '月\n'
+    # fp.write("开始向接口表插入数据\n")
+    fp.write(message)
+    show_message = ShowMessage(message)
+    show_message.start()
+    # 删除当前会计期间中，c_VoucherHead和c_VoucherBody中的所有数据，然后导入新数据
+    Inter_Session.query(VoucherBody).filter(
+        and_(VoucherBody.year == open_year, VoucherBody.period == open_period)).delete(
+        synchronize_session=False)
+    Inter_Session.query(VoucherHead).filter(
+        and_(VoucherHead.year == open_year, VoucherHead.period == open_period)).delete(
+        synchronize_session=False)
+    Inter_Session.commit()
+    message += "接口表清除完毕\n"
+    fp.write("接口表清除完毕\n")
+    for each in voucher_head:
+        head_data = VoucherHead(*each)
+        Inter_Session.add(head_data)
+        Inter_Session.commit()
+    for each in voucher_body:
+        body_data = VoucherBody(*each)
+        Inter_Session.add(body_data)
+        Inter_Session.commit()
+    message += "接口表导入完成, 共导入数据" + str(len(voucher_body)) + "行\n"
+    fp.write(message)
+    show_message = ShowMessage(message)
+    show_message.start()
+    fp.close()
+    return 1
 
+
+def interface_to_kingdee(database, account_book):
+    """
+    从接口表中取出数据，插入金蝶的凭证表t_Voucher和t_VoucherEntry
+    :param database: 要插入的数据库名称，金蝶中不同的账套对应不同的数据库
+    :param account_book: 中间表中账套代码，也是JDE种账套的代码， account_book和上一个参数database是一一对应关系
+    :return:
+    """
+    # 建立engine， metadata 和 session
+    engine = create_engine("mssql+pymssql://appadmin:N0v1terp@srvshasql01/%s?charset=utf8" % database)
+    metadata = MetaData(bind=engine)
+    db_session = sessionmaker(bind=engine)
+    session = db_session()
+    # 通过金蝶系统的表t_Subsys查询系统中当前的会计期间，只处理当前会计期间的凭证，之前和之后期间的凭证不处理
+    sub_sys = Table('t_SubSys', metadata, autoload=True, autoload_with=engine)
+    open_year, open_period = session.query(sub_sys.c.Fyear, sub_sys.c.Fperiod).filter(sub_sys.c.Fcheckout == 0).first()
+    # 清除当前会计期间中凭证头和凭证行的数据,已过账的数据不作处理
+    fp = open("log.txt", "a")
+    fp.write("-"*20 + "\n")
+    fp.write("开始对账套" + database + "导入凭证\n")
+    fp.write("账套" + database + "的当前会计期间为" + str(open_year) + "年" + str(open_period) + "月\n")
+    conn = engine.connect()
+    # 映射金蝶系统的凭证表t_Voucher和t_VoucherEntry, 后续会在这两张表中做清除和插入
+    voucher = Table('t_Voucher', metadata, autoload=True, autoload_with=engine)
+    voucher_entry = Table('t_VoucherEntry', metadata, autoload=True, autoload_with=engine)
+    # 找到当前会计期间的FVoucherID，然后在凭证表t_Voucher和t_VoucherEntry中删除对应的凭证
+    delete_id = session.query(voucher.c.FVoucherID).filter(voucher.c.FYear == open_year,
+                                                           voucher.c.FPeriod == open_period,
+                                                           voucher.c.FPosted == 0)
+    stmt = voucher.delete().where(voucher.c.FVoucherID.in_(delete_id))
+    conn.execute(stmt)
+    stmt = voucher_entry.delete().where(voucher_entry.c.FVoucherID.in_(delete_id))
+    conn.execute(stmt)
+    fp.write("凭证删除完毕\n")
+    show_message = ShowMessage("凭证删除完毕\n")
+    show_message.start()
+    # 从接口表VouchHead中取出头信息，注意：因为针对VoucherHead和VoucherBody建立了Relation关系，
+    # 所以可以通过VoucherHead的voucher_bodies属性返回Voucher的Body信息
+    # 取出接口表中行合计大于1的凭证
+    voucher_head = Inter_Session.query(VoucherHead).filter(
+        and_(VoucherHead.year == open_year, VoucherHead.period == open_period, VoucherHead.line_count > 1,
+             VoucherHead.account_book == account_book))
+    # voucher_number指凭证号，每插入一张凭证，凭证号加1
+    voucher_number = 1
+    # 遍历VoucherHead复合条件的数据，逐行插入金蝶的凭证头和凭证行
+    for each in voucher_head:
+        # serial_number是t_Voucher中的一个字段，为递增字段，不受期间影响，每次加一；所以每次插入凭证前，
+        # 先取出当前系统的最大值，然后加1插入t_Voucher中
+        serial_number = session.query(func.max(voucher.c.FSerialNum)).first()[0]
+        # 如果是空账套，没有serial_number，返回的是None，所以要指定初始值为1
+        if not serial_number:
+            serial_number = 1
+        stmt = voucher.insert().values(FVoucherID=-1, FDate=each.voucher_date, FYear=each.year, FPeriod=each.period,
+                                       FGroupID=1,
+                                       FNumber=voucher_number, FEntryCount=each.line_count,
+                                       FDebitTotal=each.total_amount,
+                                       FCreditTotal=each.total_amount, FPreparerID=16393, FSerialNum=serial_number + 1,
+                                       FTransDate=each.voucher_date, FAttachments=0)
+        voucher_number += 1
+        conn.execute(stmt)
+        # 金蝶凭证头的触发器会在插入后生成凭证头的ID，先取出这个ID，用于凭证行插入
+        voucher_id = session.query(voucher.c.FVoucherID).filter(voucher.c.FSerialNum == serial_number + 1).first()[0]
+        # 根据Relation关系由VoucherHead直接关联到对应的VoucherBody信息
+        voucher_bodies = each.voucher_bodies
+        # 针对VoucherHead中的每一行头信息，通过SqlAlchemy的Relation关系，可以直接调用每一行的voucher_bodies属性关联到VoucherBody对象
+        for each_line in voucher_bodies:
+            # VoucherBody中只有jde_account，此时通过MatchTable转化为account_id
+            account_id = session.query(MatchTable.F_101).filter(MatchTable.FNumber == each_line.jde_account).first()[0]
+            # 将VoucherBody中的币别代码，如“CNY"和"USD"转化为币别ID，如1， 1001
+            currency_id = session.query(Currency.FCurrencyID).filter(Currency.FNumber == each_line.currency).first()[0]
+            # fdc是凭证的借贷方，正数在借方，负数在贷方，注意此处规定了借贷方，所以后续金额不再分正负，全部取绝对值
+            fdc = 1 if each_line.amount_cny > 0 else 0
+            stmt = voucher_entry.insert().values(FVoucherID=voucher_id, FEntryID=each_line.line_number,
+                                                 FExplanation=each_line.voucher_description, FAccountID=account_id,
+                                                 FCurrencyID=currency_id, FExchangeRate=each_line.exchange_rate,
+                                                 FDC=fdc,
+                                                 FAmountFor=abs(each_line.amount_for),
+                                                 FAmount=abs(each_line.amount_cny),
+                                                 FExchangeRateType=1)
+            conn.execute(stmt)
+    fp.write("账套" + database + "的凭证导入完成\n")
+    fp.close()
 
 if __name__ == "__main__":
-    voucher_head, voucher_body = voucher_info()
-    print("总共有凭证头", len(voucher_head), "行")
-    heads = []
-    for value in voucher_head:
-        heads.append((value[0],value[1]))
-    heads.sort()
-    print(heads)
+    try:
+        result = insert_interface()
+        if result:
+            interface_to_kingdee(DB_DI, DI_CODE)
+            messagebox.showinfo("Succeed", "Step1 is done successfully")
+            interface_to_kingdee(DB_TJ, TJ_CODE)
+            messagebox.showinfo("Succeed", "The import is done successfully")
+    except:
+        messagebox.showerror("Error", "Please see log for error message")
+        logging.exception("Error:")

@@ -6,17 +6,16 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import relationship, backref
 from datetime import datetime
+from configuation import Interface_Database
 
 Base = declarative_base()
-Engine = create_engine('mssql+pymssql://appadmin:N0v1terp@srvshasql01/R_DH_DI_0915')
-DATABASE = 'R_DH_DI_0915'
+Engine = create_engine("mssql+pymssql://appadmin:N0v1terp@srvshasql01/%s?charset=utf8" % Interface_Database)
 
 
 class VoucherHead(Base):
     __tablename__ = "c_VoucherHead"
     # 导入数据没有唯一的表示标识ID，唯一可以确定的是，在同一个期间内，jde_number不会重复出现
-    __table_args__ = (PrimaryKeyConstraint('account_book', 'jde_number', 'year', 'period', name='c_VoucherHead_pk'),
-    )
+    __table_args__ = (PrimaryKeyConstraint('account_book', 'jde_number', 'year', 'period', name='c_VoucherHead_pk'),)
     account_book = Column(NVARCHAR(20), nullable=False)
     jde_number = Column(NVARCHAR(20), nullable=False)
     # voucher_number = Column(Integer, nullable=False)
@@ -82,19 +81,6 @@ class SubSys(Base):
     __table__ = Table('t_SubSys', Base.metadata, autoload=True, autoload_with=Engine)
 
 
-# class TVoucher(Base):
-#     # 对应金蝶系统的凭证头表
-#     __table__ = Table('t_Voucher', Base.metadata,
-#                       autoload=True, autoload_with=Engine, implicit_returning=False)
-#
-#
-# class TVoucherEntry(Base):
-#     # 对应金蝶系统的凭证行表
-#     __table__ = Table('t_VoucherEntry', Base.metadata,
-#                       autoload=True,
-#                       autoload_with=Engine)
-
-
 class MatchTable(Base):
     # 金蝶系统内的科目映射表
     __table__ = Table('t_Item_3001', Base.metadata, autoload=True, autoload_with=Engine)
@@ -106,10 +92,6 @@ class Account(Base):
 
 class Currency(Base):
     __table__ = Table('t_Currency', Base.metadata, autoload=True, autoload_with=Engine)
-
-
-# class MapTable(Base):
-#     __table__ = Table('map_source', Base.metadata, autoload=True, autoload_with=Engine)
 
 
 def if_table_exists(engine, tablename):
@@ -132,10 +114,6 @@ def create_table(engine, tablename):
         print("Already exists")
 
 
-        # drop_table(Engine, 'c_VoucherBody')
-        # drop_table(Engine, 'c_VoucherHead')
-        # create_table(Engine, 'c_VoucherHead')
-        # create_table(Engine, 'c_VoucherBody')
-        # # def delete_item(engine, tablename):
-        #     if if_table_exists(engine, tablename):
-        #         Base.metadata.tables[tablename].delete()
+if __name__ == "__main__":
+    create_table(Engine, "c_VoucherHead")
+    create_table(Engine, "c_VoucherBody")

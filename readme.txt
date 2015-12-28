@@ -1,0 +1,3 @@
+将特定的Excel数据，整理后导入数据库；
+使用SqlAlchemy、pymssql处理程序和数据库的连接和操作
+使用py2exe将程序打包为exe可执行程序；

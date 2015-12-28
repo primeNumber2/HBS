@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.orm import sessionmaker
 
-Engine = create_engine("mssql+pymssql://appadmin:N0v1terp@srvshasql01/R_DH_DI_0915?charset=utf8")
+Engine = create_engine("mssql+pymssql://appadmin:N0v1terp@srvshasql01/DH_DI?charset=utf8")
 metadata = MetaData(bind=Engine)
 DBSession = sessionmaker(bind=Engine)
 session = DBSession()
